@@ -12,6 +12,7 @@ Crazyflie.
 import logging
 import sys
 import time
+from turtle import width
 
 import cflib.crtp
 from cflib.crazyflie.log import LogConfig
@@ -53,7 +54,7 @@ def start_position_printing(scf):
     log_conf.data_received_cb.add_callback(position_callback)
     log_conf.start()
 
-    
+
             
 def is_close(range):
     MIN_DISTANCE = 0.4  # m
@@ -63,6 +64,24 @@ def is_close(range):
     else:
         return range < MIN_DISTANCE
 
+def sweep(inlandingzone):
+    distx=0
+    disty=0
+    width_land_zone=1
+    length=0.5
+    if inlandingzone :
+        for i in range(2) :
+            while dist < width_land_zone :
+                motion_commander.start_linear_motion(0, 0.5, 0)
+                distx = log_pos[-1][0]-log_pos[0][0]
+            motion_commander.start_linear_motion(0.5, 0, 0)
+        motion_commander.stop()
+        motion_commander.land()
+    else : 
+        motion_commander.land()
+
+
+    
 
 if __name__ == '__main__':
     # Initialize the low-level drivers (don't list the debug drivers)
