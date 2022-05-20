@@ -73,7 +73,7 @@ from PyQt5 import QtCore, QtWidgets
 
 logging.basicConfig(level=logging.INFO)
 
-URI = uri_helper.uri_from_env(default='radio://0/80/2M/E7E7E7E7E7')
+URI = uri_helper.uri_from_env(default='radio://0/80/2M/E7E7E7E713')
 
 if len(sys.argv) > 1:
     URI = sys.argv[1]
@@ -251,6 +251,8 @@ class Canvas(scene.SceneCanvas):
                 self.keyCB('height', 0.1)
             if (event.native.key() == QtCore.Qt.Key_S):
                 self.keyCB('height', -0.1)
+            if (event.native.key() == QtCore.Qt.Key_C):
+                self.keyCB(sys.exit())
 
     def on_key_release(self, event):
         if (not event.native.isAutoRepeat()):

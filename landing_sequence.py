@@ -12,7 +12,6 @@ Crazyflie.
 import logging
 import sys
 import time
-import keyboard
 
 import cflib.crtp
 from cflib.crazyflie.log import LogConfig
@@ -28,7 +27,7 @@ time_step = 100 #ms
 
 if len(sys.argv) > 1:
     URI = sys.argv[1]
-    
+
 # Only output errors from the logging framework
 logging.basicConfig(level=logging.ERROR)
 
@@ -43,7 +42,7 @@ def position_callback(timestamp, data, logconf):
     #for idx, i in enumerate(list(data)):
     #        self.logs[self.count][idx] = data[i]
     #print('pos: ({}, {}, {})'.format(x, y, z))
-    
+
 def start_position_printing(scf):
     log_conf = LogConfig(name='Position', period_in_ms=time_step)
     log_conf.add_variable('kalman.stateX', 'float')
@@ -54,8 +53,7 @@ def start_position_printing(scf):
     log_conf.data_received_cb.add_callback(position_callback)
     log_conf.start()
 
-    
-            
+
 def is_close(range):
     MIN_DISTANCE = 0.4  # m
 
@@ -64,25 +62,59 @@ def is_close(range):
     else:
         return range < MIN_DISTANCE
 
-def sweep(inlandingzone):
-    distx=0
-    disty=0
-    width_land_zone=1
-    length=0.5
-    if inlandingzone :
-        for i in range(2) :
-            while distx < width_land_zone :
-                if keyboard.read_key() == "c":
-                    sys.exit()
-                motion_commander.start_linear_motion(0, 0.2, 0)
-                distx = log_pos[-1][0]-log_pos[0][0]
-                print(log_pos[-1])
-            motion_commander.start_linear_motion(0.2, 0, 0)
-            time.sleep(1)
-        motion_commander.stop()
-        motion_commander.land()
-    else :
-        motion_commander.land()
+def ascending_step():
+    if (log_pos[-3][2]-log_pos[-1][2])> 0.05:
+        print('ascending step')
+        return True
+    else:
+        return False
+
+def descending_step():
+    if (log_pos[-3][2]-log_pos[-1][2])> 0.05:
+        print('descending step')
+        return True
+    else:
+        return False
+
+def landing_sequence(vel_x,vel_y):
+    print('landing sequence')
+    VELOCITY = 0.5
+    epsilon = 10
+
+    # look for mid pos on first direction (pos_m1)
+    motion_commander.start_linear_motion(vel_x, vel_y, 0)
+    pos_1 = [log_pos[-1][0],log_pos[-1][1]]
+    while not descending_step():
+        #keep flying
+        time.sleep(0.1)
+    pos_2 = [log_pos[-1][0],log_pos[-1][1]]
+    pos_m1 = [(pos_1[0]-pos_2[0])/2,(pos_1[1]-pos_2[1])/2]
+
+    #go to pos_m1
+    motion_commander.start_linear_motion(-vel_x, -vel_y, 0)
+    while ((log_pos[-1][0]-pos_m1[0])**2+(log_pos[-1][1]-pos_m1[1])**2)**0.5 > epsilon:
+        #keep flying
+        time.sleep(0.1)
+
+    # look for mid pos on second direction (pos_m2)
+    motion_commander.start_linear_motion(-vel_x, vel_y, 0)
+    while not descending_step():
+        #keep flying
+        time.sleep(0.1)
+    pos_1 = [log_pos[-1][0],log_pos[-1][1]]
+    motion_commander.start_linear_motion(vel_x, -vel_y, 0)
+    while not descending_step():
+        #keep flying
+        time.sleep(0.1)
+    pos_2 = [log_pos[-1][0],log_pos[-1][1]]
+    pos_m2 = [(pos_1[0]-pos_2[0])/2,(pos_1[1]-pos_2[1])/2]
+
+    motion_commander.start_linear_motion(-vel_x, vel_y, 0)
+    while ((log_pos[-1][0]-pos_m2[0])**2+(log_pos[-1][1]-pos_m2[1])**2)**0.5 > epsilon:
+        #keep flying
+        time.sleep(0.1)
+    motion_commander.start_linear_motion(0, 0, 0)
+    motion_commander.land()
 
 
 if __name__ == '__main__':
@@ -90,32 +122,23 @@ if __name__ == '__main__':
     cflib.crtp.init_drivers(enable_debug_driver=False)
 
     cf = Crazyflie(rw_cache='./cache')
-    
-     # Connect callbacks from the Crazyflie API
+
+    # Connect callbacks from the Crazyflie API
     #cf.connected.add_callback(connected)
     #cf.disconnected.add_callback(self.disconnected)
     #lpos = connected(URI)
-    
+
     with SyncCrazyflie(URI, cf=cf) as scf:
         with MotionCommander(scf) as motion_commander:
             with Multiranger(scf) as multi_ranger:
-                
+
                 keep_flying = True
                 state = "goal following"
-                print("switched to " + state)
+                print("switched to" + state)
                 start_position_printing(scf)
 
                 while keep_flying:
-
-
-                    #sweep(1)
-
-
                     #print(state)
-                    if keyboard.read_key() == "c":
-                        motion_commander.land()
-                        #sys.exit()
-
                     if state == "obstacle avoidance":
                         #print(log_pos[-1]) #[0]) len(log_pos)
                         VELOCITY = 0.5
@@ -161,7 +184,8 @@ if __name__ == '__main__':
 
                     if (log_pos[-3][2]-log_pos[-1][2])> 0.05:
                         print('base detectée')
-                        motion_commander.land()
+                        #motion_commander.land()
+                        landing_sequence(velocity_x,velocity_y)
                         keep_flying = False
 
                     print('z: ', log_pos[-1][2])
@@ -172,5 +196,6 @@ if __name__ == '__main__':
                         velocity_x, velocity_y, 0)
 
                     time.sleep(0.1)
+
 
             print('Demo terminated!')
