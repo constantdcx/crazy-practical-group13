@@ -13,6 +13,8 @@ import time
 import numpy.linalg as la
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle
+from enum import Enum
 
 import cflib.crtp
 from cflib.crazyflie.log import LogConfig
@@ -24,9 +26,17 @@ from cflib.positioning.position_hl_commander import PositionHlCommander
 
 URI = 'radio://0/80/2M/E7E7E7E713'
 log_pos = [[0,0,0], [0,0,0], [0,0,0]]
-time_step = 100 #ms
+timestep = 10 #ms
 VELOCITY = 0.3
-LANDING_DIST = 3.5
+VELOCITY_LANDING = 0.3
+LANDING_DIST = 2.0
+
+class State(Enum):
+    GOAL_FOLLOWING = 0
+    OBSTACLE_AVOIDANCE = 1
+    GRID_SEARCH = 2
+    LANDING = 3
+    RETURN = 4
     
 # Only output errors from the logging framework
 logging.basicConfig(level=logging.ERROR)
@@ -42,7 +52,7 @@ def position_callback(timestamp, data, logconf):
     #print('pos: ({}, {}, {})'.format(x, y, z))
     
 def start_position_printing(scf):
-    log_conf = LogConfig(name='Position', period_in_ms=time_step)
+    log_conf = LogConfig(name='Position', period_in_ms=timestep)
     log_conf.add_variable('kalman.stateX', 'float')
     log_conf.add_variable('kalman.stateY', 'float')
     log_conf.add_variable('kalman.stateZ', 'float')
@@ -61,6 +71,7 @@ def is_close(range):
     else:
         return range < MIN_DISTANCE
 
+'''
 def sweep(inlandingzone):
     distx=0
     disty=0
@@ -78,9 +89,11 @@ def sweep(inlandingzone):
         mc.land()
     else :
         mc.land()
+'''
 
 def print_position():
-    print(f'x: {log_pos[-1][0]:.3f}, y: {log_pos[-1][1]:.3f}, z: {log_pos[-1][2]:.3f}')
+    time = len(log_pos) * (timestep * 1e-3)
+    print(f'x: {log_pos[-1][0]:.3f}, y: {log_pos[-1][1]:.3f}, z: {log_pos[-1][2]:.3f}, time: {time:.3f}')
 
 def print_multiranger(mr):
     print(f'front: {mr.front}, left: {mr.left}, \
@@ -121,12 +134,13 @@ def obstacle_contourning(mc, mr):
     pass
 
 def plot_z():
-    print(log_pos)
+    end_time = len(log_pos) * (timestep * 1e-3)
+
+    time = np.linspace(0.0, len(log_pos) * (timestep * 1e-3), len(log_pos))
     pos_array = np.array(log_pos)
-    print(pos_array)
     plt.figure()
-    plt.plot(pos_array[:,2])
-    plt.xlabel("time")
+    plt.plot(time, pos_array[:,2])
+    plt.xlabel("time (s)")
     plt.ylabel("z [m]")
     plt.title("Drone altitude")
 
@@ -134,22 +148,42 @@ def plot_z():
     pass
 
 def plot_traj():
-    print(log_pos)
     pos_array = np.array(log_pos)
-    print(pos_array)
     plt.figure()
     plt.plot(pos_array[:,0], pos_array[:,1])
     plt.xlabel("x [m]")
     plt.ylabel("y [m]")
-    plt.xlim([0,5])
+    #plt.xlim([0,5])
     ymin = 0
     ymax = 3
-    plt.ylim([ymin,ymax])
-    plt.vlines([1.5,3.5], ymin=ymin, ymax=ymax)
+    #plt.ylim([ymin,ymax])
+    plt.vlines([1.5,3.5], ymin=ymin, ymax=ymax, color='k')
+    rect = Rectangle((0, 0), 5, 3, linewidth=1, edgecolor='k', facecolor='none')
+    ax = plt.gca()
+    ax.add_patch(rect)
     plt.title("Drone Trajectory")
 
 
     pass
+
+delay = 30 # timesteps
+base_threshold = 0.03 # m
+
+def ascending_step():
+    if len(log_pos) > delay:
+        if (log_pos[-delay][2]-log_pos[-1][2]) > base_threshold:
+            print('ascending step')
+            return True
+        else:
+            return False
+
+def descending_step():
+    if len(log_pos) > delay:
+        if (log_pos[-1][2]-log_pos[-delay][2]) > base_threshold:
+            print('descending step')
+            return True
+        else:
+            return False
 
 if __name__ == '__main__':
     # Initialize the low-level drivers (don't list the debug drivers)
@@ -168,57 +202,98 @@ if __name__ == '__main__':
 
                 time.sleep(0.1)
 
+                step=1
+                length_sweep=0.2
+                width_land_zone=0.8
+                epsilon = 0.02 # landing sequence
+                landing_state = 0
+                landing_count = 0
+
                 keep_flying = True
-                state = "goal following"
-                print("switched to " + state)
+                state = State(0)
+                print("switched to " + state.name)
                 start_position_printing(scf)
 
                 while keep_flying:
+                    
+                    # Always avoid obstacles
+                    if is_close(mr.front):
+                        print("obstacle front")
+                        velocity_x = 0.0
+                        velocity_y = -VELOCITY
 
-                    if state == "obstacle avoidance":
+                    if is_close(mr.back):
+                        print("obstacle back")
+                        velocity_x = VELOCITY
 
-                        obstacle_contourning(mc, mr)
+                    if is_close(mr.left):
+                        print("obstacle left")
+                        velocity_y = -VELOCITY
+                    if is_close(mr.right):
+                        print("obstacle right")
+                        velocity_y = VELOCITY
 
-                        # if is_close(mr.front):
-                        #     velocity_x = 0.0
-                        #     velocity_y = -VELOCITY
+                    if state == State.OBSTACLE_AVOIDANCE:
 
-                        # if is_close(mr.back):
-                        #     velocity_x = VELOCITY
-
-                        # if is_close(mr.left):
-                        #     velocity_y = -VELOCITY
-                        # if is_close(mr.right):
-                        #     velocity_y = VELOCITY
+                        #obstacle_contourning(mc, mr)
 
                         if not is_close(mr.front):
                             if log_pos[-1][0] > LANDING_DIST:
-                                state = "grid search"
-                                print("switched to" + state)
+                                state = State.GRID_SEARCH
+                                print("switched to" + state.name)
                             else:
-                                state = "goal following"
-                                print("switched to" + state)
+                                state = State.GOAL_FOLLOWING
+                                print("switched to" + state.name)
 
 
 
-                    if state == "goal following":
+                    if state == State.GOAL_FOLLOWING:
                         velocity_x = VELOCITY
                         velocity_y = 0.0
                         if log_pos[-1][0] > LANDING_DIST:
-                            state = "grid search"
-                            print("switched to" + state)
+                            state = State.GRID_SEARCH
+                            print("switched to" + state.name)
 
                         if is_close(mr.front) or is_close(mr.left) or is_close(mr.back) or is_close(mr.right):
-                            state = "obstacle avoidance"
-                            print("switched to" + state)
+                            state = State.OBSTACLE_AVOIDANCE
+                            print("switched to" + state.name)
 
-                    if state == "grid search":
-                        #print("grid search")
-                        keep_flying = False
-                        mc.land()
-                        break
+                    if state == State.GRID_SEARCH:
+                        print("step ", step)
+                        if step == 1 :
+                            velocity_x=0
+                            velocity_y=VELOCITY
+                            x0=log_pos[-1][0]
+                            if log_pos[-1][1] > width_land_zone : step=2
 
-                    if state == "return":
+                        if step == 2 :
+                            velocity_x=VELOCITY
+                            velocity_y=0
+                            if log_pos[-1][0]-x0 > length_sweep : 
+                                step=3
+                                x0=log_pos[-1][0]
+
+                        if step==3 :
+                            velocity_x=0
+                            velocity_y=-VELOCITY
+                            if log_pos[-1][1] < 0 : step=4
+
+                        if step == 4 :
+                            velocity_x=VELOCITY
+                            velocity_y=0
+                            if log_pos[-1][0]-x0 > length_sweep : 
+                                step=1
+                                x0=log_pos[-1][0]
+
+                        if ascending_step():
+                            state = State.LANDING
+                            print("switched to state ", state.name)
+
+                    if len(log_pos) > delay:
+                        if (abs(log_pos[-delay][2] - log_pos[-1][2]) > base_threshold):
+                            print("base détectée")
+
+                    if state == State.RETURN:
                         print(f'position : {log_pos[-1]}')
                         kp = 0.5
                         home_position = [1.0, 0.5]
@@ -235,8 +310,86 @@ if __name__ == '__main__':
                             print("taking off")
                             mc.take_off()
 
+                    if (state == State.LANDING):
+                        #motion_commander.land()
+                        #landing_sequence(velocity_x,velocity_y)
+                        print(f'landing_state = {landing_state}')
+        
+                        if landing_state == 0:
+                            state = State.LANDING
+                            landing_state = 1
+                            pos_1 = [log_pos[-1][0],log_pos[-1][1]]
+
+                        elif landing_state == 1:
+                            # look for mid pos on first direction (pos_m1)
+                            #motion_commander.start_linear_motion(vel_x, vel_y, 0)
+                            if descending_step():
+                                pos_2 = [log_pos[-1][0],log_pos[-1][1]]
+                                pos_m1 = [(pos_1[0]+pos_2[0])/2,(pos_1[1]+pos_2[1])/2]
+                                landing_state = 2
+                                #motion_commander.start_linear_motion(-vel_x, -vel_y, 0)
+                                velocity_x = -velocity_x/2.0
+                                velocity_y = -velocity_y/2.0
+
+                        #go to pos_m1
+                        elif landing_state == 2:
+                            if ((log_pos[-1][0]-pos_m1[0])**2+(log_pos[-1][1]-pos_m1[1])**2)**0.5 < epsilon:
+                                landing_state = 3
+                                #motion_commander.start_linear_motion(-vel_x, vel_y, 0)
+                                v_temp = velocity_x
+                                velocity_x = -velocity_y
+                                velocity_y = v_temp
+
+                        elif landing_state == 3:
+                            offset = 0.3
+                            vel_norm = la.norm([velocity_x, velocity_y])
+                            offset_x = offset * velocity_x / vel_norm
+                            offset_y = offset * velocity_y / vel_norm
+                            pos_m1_offset = pos_m1 + [offset_x, offset_y]
+                            print(pos_m1_offset)
+
+                            if ((log_pos[-1][0]-pos_m1_offset[0])**2+(log_pos[-1][1]-pos_m1_offset[1])**2)**0.5 < epsilon:
+                                landing_state = 4
+                                velocity_x = -velocity_x
+                                velocity_y = -velocity_y
+
+                        # look for mid pos on second direction (pos_m2)
+                        elif landing_state == 4:
+                            if descending_step():
+                                pos_1 = [log_pos[-1][0],log_pos[-1][1]]
+                                #motion_commander.start_linear_motion(vel_x, -vel_y, 0)
+                                velocity_x = -velocity_x
+                                velocity_y = -velocity_y
+                                landing_state = 5
+
+                        elif landing_state == 5:
+                            landing_count += 1
+                            if landing_count > 8:
+                                if descending_step():
+                                    pos_2 = [log_pos[-1][0],log_pos[-1][1]]
+                                    pos_m2 = [(pos_1[0]+pos_2[0])/2,(pos_1[1]+pos_2[1])/2]
+                                    #motion_commander.start_linear_motion(-vel_x, vel_y, 0)
+                                    velocity_x = -velocity_x
+                                    velocity_y = -velocity_y
+                                    landing_state = 6
+
+                        elif landing_state == 6:
+                            if ((log_pos[-1][0]-pos_m2[0])**2+(log_pos[-1][1]-pos_m2[1])**2)**0.5 < epsilon:
+                                #motion_commander.start_linear_motion(0, 0, 0)
+                                velocity_x = 0.0
+                                velocity_y = 0.0
+                                mc.land()
+                                landing_state = 0
+                                landing_count = 0
+                                keep_flying = False
+                                print("Bravo Arthur !!")
+                                break
+
+                    # Emergency stop
                     if is_close(mr.up):
                         keep_flying = False
+                        mc.land()
+                        break
 
                     # if (log_pos[-3][2]-log_pos[-1][2])> 0.05:
                     #     print('base detectée')
