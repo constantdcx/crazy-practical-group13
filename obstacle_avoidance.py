@@ -102,6 +102,10 @@ if __name__ == '__main__':
                 
                 keep_flying = True
                 state = "goal following"
+                step=1
+                length_sweep=0.2
+                width_land_zone=3
+
                 print("switched to " + state)
                 start_position_printing(scf)
 
@@ -112,10 +116,7 @@ if __name__ == '__main__':
 
 
                     #print(state)
-                    if keyboard.read_key() == "c":
-                        motion_commander.land()
-                        #sys.exit()
-
+                    
                     if state == "obstacle avoidance":
                         #print(log_pos[-1]) #[0]) len(log_pos)
                         VELOCITY = 0.5
@@ -153,8 +154,35 @@ if __name__ == '__main__':
                             print("switched to" + state)
 
                     if state == "grid search":
+
                         #print("grid search")
-                        keep_flying = False
+                        if step == 1 :
+                            vx=0
+                            vy=VELOCITY
+                            x0=log_pos[-1][0]
+                            if log_pos[-1][1] > width_land_zone : step=2
+
+                        if step == 2 :
+                            vx=VELOCITY
+                            vy=0
+                            if log_pos[-1][0]-x0 > length_sweep : 
+                                step=3
+                                x0=log_pos[-1][0]
+
+                        if step==3 :
+                            vx=0
+                            vy=-VELOCITY
+                            if log_pos[-1][1] < 0 : step=4
+
+                        if step == 4 :
+                            vx=VELOCITY
+                            vy=0
+                            if log_pos[-1][0]-x0 > length_sweep : 
+                                step=1
+                                x0=log_pos[-1][0]
+
+                        #keep_flying = False
+
 
                     if is_close(multi_ranger.up):
                         keep_flying = False
