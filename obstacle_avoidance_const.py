@@ -205,7 +205,7 @@ if __name__ == '__main__':
                 step=1
                 length_sweep=0.2
                 width_land_zone=0.8
-                epsilon = 0.02 # landing sequence
+                epsilon = 0.05 # landing sequence
                 landing_state = 0
                 landing_count = 0
 
@@ -314,8 +314,10 @@ if __name__ == '__main__':
                         #motion_commander.land()
                         #landing_sequence(velocity_x,velocity_y)
                         print(f'landing_state = {landing_state}')
+                        delta=0.3
         
                         if landing_state == 0:
+                            mc.land()
                             state = State.LANDING
                             landing_state = 1
                             pos_1 = [log_pos[-1][0],log_pos[-1][1]]
@@ -339,39 +341,34 @@ if __name__ == '__main__':
                                 v_temp = velocity_x
                                 velocity_x = -velocity_y
                                 velocity_y = v_temp
+                                start_pos3 = log_pos[-1]
 
                         elif landing_state == 3:
-                            offset = 0.3
-                            vel_norm = la.norm([velocity_x, velocity_y])
-                            offset_x = offset * velocity_x / vel_norm
-                            offset_y = offset * velocity_y / vel_norm
-                            pos_m1_offset = pos_m1 + [offset_x, offset_y]
-                            print(pos_m1_offset)
-
-                            if ((log_pos[-1][0]-pos_m1_offset[0])**2+(log_pos[-1][1]-pos_m1_offset[1])**2)**0.5 < epsilon:
+                          
+                        
+                            if ((log_pos[-1][0]-start_pos3[0])**2+(log_pos[-1][1]-start_pos3[1])**2)**0.5 > delta:
                                 landing_state = 4
                                 velocity_x = -velocity_x
                                 velocity_y = -velocity_y
 
                         # look for mid pos on second direction (pos_m2)
                         elif landing_state == 4:
-                            if descending_step():
+                            if ascending_step():
                                 pos_1 = [log_pos[-1][0],log_pos[-1][1]]
                                 #motion_commander.start_linear_motion(vel_x, -vel_y, 0)
-                                velocity_x = -velocity_x
-                                velocity_y = -velocity_y
+                                velocity_x = velocity_x
+                                velocity_y = velocity_y
                                 landing_state = 5
 
                         elif landing_state == 5:
-                            landing_count += 1
-                            if landing_count > 8:
-                                if descending_step():
-                                    pos_2 = [log_pos[-1][0],log_pos[-1][1]]
-                                    pos_m2 = [(pos_1[0]+pos_2[0])/2,(pos_1[1]+pos_2[1])/2]
-                                    #motion_commander.start_linear_motion(-vel_x, vel_y, 0)
-                                    velocity_x = -velocity_x
-                                    velocity_y = -velocity_y
-                                    landing_state = 6
+                            
+                            if descending_step():
+                                pos_2 = [log_pos[-1][0],log_pos[-1][1]]
+                                pos_m2 = [(pos_1[0]+pos_2[0])/2,(pos_1[1]+pos_2[1])/2]
+                                #motion_commander.start_linear_motion(-vel_x, vel_y, 0)
+                                velocity_x = -velocity_x
+                                velocity_y = -velocity_y
+                                landing_state = 6
 
                         elif landing_state == 6:
                             if ((log_pos[-1][0]-pos_m2[0])**2+(log_pos[-1][1]-pos_m2[1])**2)**0.5 < epsilon:
