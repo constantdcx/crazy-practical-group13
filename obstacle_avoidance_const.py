@@ -40,6 +40,7 @@ class State(Enum):
     GRID_SEARCH = 2
     LANDING = 3
     RETURN = 4
+    SQUARED_SEARCH = 5
     
 # Only output errors from the logging framework
 logging.basicConfig(level=logging.ERROR)
@@ -117,7 +118,7 @@ def obstacle_contourning(mc, mr):
         time.sleep(0.1)
 
     # wait a bit more
-    time.sleep(1.0)
+    time.sleep(1)
 
     # compute lateral distance
     lateral_distance = abs(log_pos[-1][1] - start_y)
@@ -127,7 +128,7 @@ def obstacle_contourning(mc, mr):
 
     # goes forward until obstacle is not on right
     mc.start_linear_motion(VELOCITY, 0, 0)
-    time.sleep(2.0)
+    time.sleep(1.5)
 
     while is_close(mr.right):
         time.sleep(0.1)
@@ -170,6 +171,7 @@ def plot_traj():
 
     pass
 
+
 delay = 30 # timesteps
 base_threshold = 0.03 # m
 
@@ -211,7 +213,12 @@ if __name__ == '__main__':
                 width_land_zone=0.8
                 epsilon = 0.05 # landing sequence
                 landing_state = 0
+                squared_search_state = 0
                 landing_count = 0
+
+                square_margin = 0.4
+                epsilon_ss = 0.1
+                squares_done = 0
 
                 keep_flying = True
                 state = State(0)
@@ -300,19 +307,20 @@ if __name__ == '__main__':
                     if state == State.RETURN:
                         print(f'position : {log_pos[-1]}')
                         kp = 0.5
-                        home_position = [1.0, 0.5]
+                        home_position = [0.0,0.0]
                         distx = home_position[0] - log_pos[-1][0]
                         disty = home_position[1] - log_pos[-1][1]
                         dist_norm = la.norm([distx, disty])
-                        if dist_norm > 0.2:
+                        if dist_norm > 0.1:
                             velocity_x = kp * distx / dist_norm
                             velocity_y = kp * disty / dist_norm
                         else:
                             mc.land()
                             print("landed")
                             time.sleep(1)
-                            print("taking off")
-                            mc.take_off()
+                            break
+                            # print("taking off")
+                            # mc.take_off()
 
                     if (state == State.LANDING):
                         #motion_commander.land()
@@ -386,6 +394,73 @@ if __name__ == '__main__':
                                 print("Bravo Arthur !!")
                                 break
 
+                    if state == State.SQUARED_SEARCH :
+
+                        if squared_search_state == 0:
+                            squares_done = 1
+                            center_pos = [log_pos[-1][0],log_pos[-1][1]]
+                            velocity_x = -velocity_x
+                            velocity_y = -velocity_y
+                            next_waypoint = center_pos+[velocity_x*square_margin/2/(velocity_x**2+velocity_y**2)**0.5,velocity_y*square_margin/2/(velocity_x**2+velocity_y**2)**0.5]
+                            squared_search_state = 1
+
+                        elif squared_search_state == 1:
+                            if ((log_pos[-1][0]-next_waypoint[0])**2+(log_pos[-1][1]-next_waypoint[1])**2)**0.5 < epsilon_ss:
+                                current_pos = [log_pos[-1][0],log_pos[-1][1]]
+                                velocity_temp = velocity_x
+                                velocity_x = -velocity_y
+                                velocity_y = velocity_temp
+                                next_waypoint = current_pos+[velocity_x*square_margin*squares_done/2/(velocity_x**2+velocity_y**2)**0.5,velocity_y*square_margin*squares_done/2/(velocity_x**2+velocity_y**2)**0.5]
+                                squared_search_state = 2
+
+                        elif squared_search_state == 2:
+                            if ((log_pos[-1][0]-next_waypoint[0])**2+(log_pos[-1][1]-next_waypoint[1])**2)**0.5 < epsilon_ss:
+                                current_pos = [log_pos[-1][0],log_pos[-1][1]]
+                                velocity_temp = velocity_x
+                                velocity_x = -velocity_y
+                                velocity_y = velocity_temp
+                                next_waypoint = current_pos+[velocity_x*square_margin*squares_done/(velocity_x**2+velocity_y**2)**0.5,velocity_y*square_margin*squares_done/(velocity_x**2+velocity_y**2)**0.5]
+                                squared_search_state = 3
+
+                        elif squared_search_state == 3:
+                            if ((log_pos[-1][0]-next_waypoint[0])**2+(log_pos[-1][1]-next_waypoint[1])**2)**0.5 < epsilon_ss:
+                                current_pos = [log_pos[-1][0],log_pos[-1][1]]
+                                velocity_temp = velocity_x
+                                velocity_x = -velocity_y
+                                velocity_y = velocity_temp
+                                next_waypoint = current_pos+[velocity_x*square_margin*squares_done/(velocity_x**2+velocity_y**2)**0.5,velocity_y*square_margin*squares_done/(velocity_x**2+velocity_y**2)**0.5]
+                                squared_search_state = 4
+
+                        elif squared_search_state == 4:
+                            if ((log_pos[-1][0]-next_waypoint[0])**2+(log_pos[-1][1]-next_waypoint[1])**2)**0.5 < epsilon_ss:
+                                current_pos = [log_pos[-1][0],log_pos[-1][1]]
+                                velocity_temp = velocity_x
+                                velocity_x = -velocity_y
+                                velocity_y = velocity_temp
+                                next_waypoint = current_pos+[velocity_x*square_margin*squares_done/(velocity_x**2+velocity_y**2)**0.5,velocity_y*square_margin*squares_done/(velocity_x**2+velocity_y**2)**0.5]
+                                squared_search_state = 5
+
+                        elif squared_search_state == 5:
+                            if ((log_pos[-1][0]-next_waypoint[0])**2+(log_pos[-1][1]-next_waypoint[1])**2)**0.5 < epsilon_ss:
+                                current_pos = [log_pos[-1][0],log_pos[-1][1]]
+                                velocity_temp = velocity_x
+                                velocity_x = -velocity_y
+                                velocity_y = velocity_temp
+                                next_waypoint = current_pos+[velocity_x*square_margin*squares_done/2/(velocity_x**2+velocity_y**2)**0.5,velocity_y*square_margin*squares_done/2/(velocity_x**2+velocity_y**2)**0.5]
+                                squared_search_state = 6
+
+                        elif squared_search_state == 6:
+                            if ((log_pos[-1][0]-next_waypoint[0])**2+(log_pos[-1][1]-next_waypoint[1])**2)**0.5 < epsilon_ss:
+                                current_pos = [log_pos[-1][0],log_pos[-1][1]]
+                                velocity_temp = velocity_x
+                                velocity_x = velocity_y
+                                velocity_y = -velocity_temp
+                                next_waypoint = current_pos+[velocity_x*square_margin/2/(velocity_x**2+velocity_y**2)**0.5,velocity_y*square_margin/2/(velocity_x**2+velocity_y**2)**0.5]
+                                squared_search_state = 1
+                                squares_done = squares_done+1
+
+
+
                     # Emergency stop
                     if is_close(mr.up):
                         keep_flying = False
@@ -401,7 +476,7 @@ if __name__ == '__main__':
                     # print_multiranger(mr)
 
 
-                    time.sleep(0.1)
+                    time.sleep(0.05)
                     mc.start_linear_motion(
                         velocity_x, velocity_y, 0)
 
