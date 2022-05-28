@@ -12,7 +12,6 @@ Crazyflie.
 import logging
 import sys
 import time
-import keyboard
 
 import cflib.crtp
 from cflib.crazyflie.log import LogConfig
@@ -72,8 +71,6 @@ def sweep(inlandingzone):
     if inlandingzone :
         for i in range(2) :
             while distx < width_land_zone :
-                if keyboard.read_key() == "c":
-                    sys.exit()
                 motion_commander.start_linear_motion(0, 0.2, 0)
                 distx = log_pos[-1][0]-log_pos[0][0]
                 print(log_pos[-1])

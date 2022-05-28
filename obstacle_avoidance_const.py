@@ -30,6 +30,9 @@ timestep = 10 #ms
 VELOCITY = 0.3
 VELOCITY_LANDING = 0.3
 LANDING_DIST = 2.0
+POS_TAKE_OFF = [0,0]
+
+
 
 class State(Enum):
     GOAL_FOLLOWING = 0
@@ -61,6 +64,7 @@ def start_position_printing(scf):
     log_conf.data_received_cb.add_callback(position_callback)
     log_conf.start()
 
+def coord_transform() :
     
             
 def is_close(range):
